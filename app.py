@@ -5,7 +5,7 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func, extract
 from flask import Flask, jsonify
-import datetime
+import datetime as dt
 
 # 2. create engine
 engine = create_engine("sqlite:///Resources/hawaii.sqlite")
@@ -24,65 +24,51 @@ session = Session(engine)
 # 4. Setup Flask to create an app, being sure to pass __name__
 app = Flask(__name__)
 
-# 5. #Create a function that gets minimum, average, and maximum temperatures for a range of dates
-        # This function called `calc_temps` will accept start date and end date in the format '%Y-%m-%d' 
-        # and return the minimum, average, and maximum temperatures for that range of dates
-def calc_temps(start_date, end_date):
-    """TMIN, TAVG, and TMAX for a list of dates.
-    
-    Args:
-        start_date (string): A date string in the format %Y-%m-%d
-        end_date (string): A date string in the format %Y-%m-%d
-        
-    Returns:
-        TMIN, TAVE, and TMAX
-    """
-    
-    return session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
-        filter(Measurement.date >= start_date).filter(Measurement.date <= end_date).all()
 
-# 6.1 Define what to do when users hit / route
+#5  / route
 @app.route("/")
 def home():
+    """Return all available routes"""
     print("Server received request for 'Home' page...")
+    
     return (
         f"Available Routes:<br/>"
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/<start><br/>"
-        f"/api/v1.0/<start>/<end>"
+        f"/api/v1.0/&lt;start&gt;<br/>"
+        f"/api/v1.0/&lt;start&gt;/&ltend&gt;"
     )
 
 
-# 6.2. Define what to do when a user hits the /api/v1.0/precipitation route
+# 6.  /api/v1.0/precipitation route
 @app.route("/api/v1.0/precipitation")
 def precipitation():
+    """ Return JSON list of dict for {date : precipitation} from the last 12 months"""
     print("Server received request for 'precipitation' page...")
     
-    #find precipitation data for the last year.  First we find the last date in the database
-    final_date_query = session.query(func.max(func.strftime("%Y-%m-%d", Measurement.date))).all()
-    max_date_string = final_date_query[0][0]
-    max_date = datetime.datetime.strptime(max_date_string, "%Y-%m-%d")
-
-    #set beginning of search query
-    begin_date = max_date - datetime.timedelta(366)
-
-    #find dates and precipitation amounts
-    precip_data = session.query(func.strftime("%Y-%m-%d", Measurement.date), Measurement.prcp).\
-        filter(func.strftime("%Y-%m-%d", Measurement.date) >= begin_date).all()
+    session = Session(engine)
     
-    #prepare the dictionary with the date as the key and the prcp value as the value
-    prcp_results_dict = {}
-    for result in precip_data:
-        prcp_results_dict[result[0]] = result[1]
-    return jsonify(prcp_results_dict)
-    
+    # Query for the dates and precipitation values
+    results =   session.query(Measurement.date, Measurement.prcp).\
+                order_by(Measurement.date).all()
 
-# 8. Define what to do when a user hits the /api/v1.0/stations route
+    # Convert date and precipitation to list of dictionaries to jsonify
+    prcp_date_list = []
+    for date, prcp in results:
+        new_dictionary = {}
+        new_dictionary[date] = prcp
+        prcp_date_list.append(new_dictionary)
+    session.close()
+    return jsonify(prcp_date_list)
+
+# 7.  /api/v1.0/stations route
 @app.route("/api/v1.0/stations")
 def stations():
+    """ Return JSON list stations with a list of dictionaries for id,station, name, lat, long, elevation"""
     print("Server received request for 'stations' page...")
+    
+    session = Session(engine)
 
     # query stations list from the Station table
     station_data = session.query(Station).all()
@@ -100,21 +86,78 @@ def stations():
         stations_list.append(stations_dict)
     return jsonify(stations_list)
 
-# 9. Define what to do when a user hits the /api/v1.0/tobs route
+# 8.  /api/v1.0/tobs route
 @app.route("/api/v1.0/tobs")
 def tobs():
     print("Server received request for 'tobs' page...")
+    
+    session = Session(engine)
 
     #query Date
-    last_date = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
-    query_date = dt.date(2017, 8, 23) - dt.timedelta(days=365)
+    last_date = session.query(Measurement.date).order_by((Measurement.date).desc()).limit(1).all()
+    last_12month = (dt.datetime.strptime(last_date[0][0], '%Y-%m-%d') - dt.timedelta(days=365)).date()
+   
+    
+    temp_results = session.query(Measurement.date, Measurement.tobs).\
+	filter(Measurement.date >= last_12month).order_by(Measurement.date).all()
     
 
+    #create a list of dictionary
+    tobs_list = []
+    for date, tobs in temp_results:
+        new_dict = {}
+        new_dict[date] = tobs
+        tobs_list.append(new_dict)
 
+    session.close()
 
+    return jsonify(tobs_list)
 
+# 9.1 /api/v1.0/<start> 
+@app.route("/api/v1.0/<start>")
+def start(start):
+    """ Return JSON list of min, avg, max temp from start date to end date"""
+    print("Server received requeste for start date page...")
+    
+    session = Session(engine)
+    return_list = []
 
-    return "1 Query the dates and temperature observations of the most active station for the last year of data. 2.Return a JSON list of temperature observations (TOBS) for the previous year."
+    results = session.query(Measurement.date,func.min(Measurement.tobs),func.avg(Measurement.tobs),func.max(Measurement.tobs)).filter(Measurement.date >= start).group_by(Measurement.date).all()
+
+    for date, min, avg, max in results:
+        new_dict = {}
+        new_dict["Date"] = date
+        new_dict["TMIN"] = min
+        new_dict["TAVG"] = avg
+        new_dict["TMAX"] = max
+        return_list.append(new_dict)
+
+    session.close()    
+
+    return jsonify(return_list)
+
+#9.2 /api/v1.0/<start>/<end>
+@app.route("/api/v1.0/<start>/<end>")
+def start_end(start,end):
+    """ Return JSON list of min, avg, max temp from start date to end date"""
+    print("")
+    session = Session(engine)
+
+    return_list = []
+
+    results = session.query(Measurement.date,func.min(Measurement.tobs),func.avg(Measurement.tobs),func.max(Measurement.tobs)).filter(Measurement.date >= start).group_by(Measurement.date).all()
+
+    for date, min, avg, max in results:
+        new_dict = {}
+        new_dict["Date"] = date
+        new_dict["TMIN"] = min
+        new_dict["TAVG"] = avg
+        new_dict["TMAX"] = max
+        return_list.append(new_dict)
+
+    session.close()    
+
+    return jsonify(return_list)
 
 
 if __name__ == "__main__":
