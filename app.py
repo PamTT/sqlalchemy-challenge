@@ -116,7 +116,7 @@ def tobs():
 # 9.1 /api/v1.0/<start> 
 @app.route("/api/v1.0/<start>")
 def start(start):
-    """ Return JSON list of min, avg, max temp each day from start date to end date"""
+    """ Return JSON list of min, avg, max temp each day from the input date"""
     print("Server received requeste for start date page...")
     
     session = Session(engine)
@@ -138,10 +138,11 @@ def start(start):
     return jsonify(return_list)
 
 #9.2 /api/v1.0/<start>/<end>
+#@app.route("/api/v1.0/<start>")
 @app.route("/api/v1.0/<start>/<end>")
 def start_end(start,end):
     """ Return JSON list of min, avg, max temp from start date to end date"""
-    print("")
+    print("Server received start and end date for that overall  min, avg, max temp requeste page...")
     session = Session(engine)
 
     return_list = []
@@ -156,7 +157,7 @@ def start_end(start,end):
         new_dict["TMAX"] = max
         return_list.append(new_dict)
 
-    session.close()    
+    session.close()   
 
     return jsonify(return_list)
 
